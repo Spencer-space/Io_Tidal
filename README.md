@@ -14,7 +14,7 @@ IoTidal_script.m
 Wrapper script used to run the coupled dynamic and tidal codes. Also conducts the isostasy calculations and does some plotting. Contact me if you want more plotting functions.
 
 CSV files for figure 1
-These files are tables of the forms 1000x4, where each column in a specified latitude and longitude, and the row is the vector of points from the CMB to the surface.
+These files are tables of the forms 1000x4, where each column is vector of points from the CMB to the surface at a specified latitude and longitude.
 
 CSV files for figures 2 and 3
 These files are matrices of plotted data. Rows are longitudes 0 to 360, columns are latitude from 90 to -90
