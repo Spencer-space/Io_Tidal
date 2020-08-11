@@ -8,10 +8,10 @@ function IoTidal_results = IoTidal_script(lam_M,lam_q,eta_flag)
 % lam_M = constant emplacement rate, units s^-1
 % lam_q = emplacement proportionality to qp, no unit
 
-% If not specified, don't load from file
-if nargin < 6
-    load_from_file = 0;
-end
+% % If not specified, don't load from file
+% if nargin < 6
+%     load_from_file = 0;
+% end
 
 if eta_flag == 1
     filename = "IoTidal_mant_lamM_" + num2str(lam_M) + "_lamq_" + num2str(lam_q);
@@ -23,11 +23,13 @@ end
 % eta_flag = 2 calculates with a high dissipation layer (low visc).
 % eta_diss values give total heating ~ 1e14 W
 if eta_flag == 1
-    eta_diss = 2.7e15;
+    eta_diss = 2.2e15;
 elseif eta_flag == 2
     eta_diss = 1.7e13;
 end
 
+Nlat_tidal = 10;
+Nlon_tidal = 20;
 Nlat = 50;
 Nlon = 100;
 
@@ -55,52 +57,70 @@ r_m = 700e3; % core radius
 
 Pc = 0; % not exploring Pc so set to zero
 
-lat_inp = linspace(0,180,Nlat);
-lon_inp = linspace(0,360,Nlon);
+lat_inp = linspace(0,180,Nlat_tidal);
+lon_inp = linspace(0,360,Nlon_tidal);
 lat_mids = 0.5*(lat_inp(1:end-1)+lat_inp(2:end));
 lon_mids = 0.5*(lon_inp(1:end-1)+lon_inp(2:end));
 r = linspace(r_m,r_s,1000);
 
+theta = linspace(0.5*pi/Nlat_tidal,pi-0.5*pi/Nlat_tidal,Nlat_tidal)';
+phi = linspace(0.5*2*pi/Nlon_tidal,2*pi-0.5*2*pi/Nlon_tidal,Nlon_tidal)';
+V_wedge = 2*pi*(r_s^3-r(1)^3)/(3*(Nlon_tidal-1)) *(-cos(theta(2:end)) + cos(theta(1:end-1)));
+V_mesh = meshgrid(V_wedge,r,phi(1:end-1));
+
 it = 1; % initialise iteration counter
 % try to load from file, if doesn't exist then do the calc
 if ~isfile(filename+".mat")
-    S = IoTidal(lam_M,lam_q,Pc,1,0,0); % initially a small Pc is used
+    S = IoTidal(lam_M,lam_q,Pc,1,0,0);
     [H H_tot] = TidalHeatingCalc(S.r,S.T,S.phi,eta_diss,NaN,NaN,eta_flag);
-    Hnew = 0; %initialise Hnew
+    Hnew = 0*H; % initiate H_new
     
-    % don't iterate if doing low viscosity layer
-    if eta_flag == 2
-        Hnew = H;
-        Hnew_tot = H_tot;
-        fprintf('Total heating = %.3e \n',Hnew_tot);
-        fprintf('Norm(H-Hold) = %.3e \n',norm(Hnew-H));
-    end
-    
-    while norm(Hnew-H)>1e-7
+    while norm(Hnew(:)-H(:))>1e-6
         if it>1
             H = Hnew;
         end
-        S = IoTidal(lam_M,lam_q,Pc,H,H_tot,0);
-        H_store(:,it) = H;
-        S_store(it) = S;
-        [Hnew Hnew_tot] = TidalHeatingCalc(S.r,S.T,S.phi,eta_diss,NaN,NaN,eta_flag);
+        for i = 1:Nlat_tidal-1
+            lat = lat_mids(i);
+            parfor j = 1:Nlon_tidal-1
+                lon = lon_mids(j);
+                S = IoTidal(lam_M,lam_q,Pc,H(:,i,j),H_tot,0);
+                por_matrix(:,i,j) = S.phi;
+                T_matrix(:,i,j) = S.T;
+                fprintf('Lat = %i / %i, Lon = %i / %i \n',i,Nlat_tidal-1,j,Nlon_tidal-1);
+            end
+        end
+        Tavg = sum(squeeze(sum(T_matrix.*V_mesh/(4/3*pi*(r_s^3-r(1)^3)),2)),2); % get average temperature structure
+        phiavg = sum(squeeze(sum(por_matrix.*V_mesh/(4/3*pi*(r_s^3-r(1)^3)),2)),2); % get average porosity structure
+
+        % don't iterate if doing low viscosity layer
+        if eta_flag == 2
+            Hnew = H;
+            Hnew_tot = H_tot;
+        else
+            [Hnew Hnew_tot] = TidalHeatingCalc(r,Tavg,phiavg,eta_diss,NaN,NaN,eta_flag); % get heating dist with avg structure
+        end
+        
         fprintf('it = %i \n',it);
         fprintf('Total heating = %.3e \n',Hnew_tot);
-        fprintf('Norm(H-Hold) = %.3e \n',norm(Hnew-H));
+        fprintf('Norm(H-Hold) = %.3e \n',norm(Hnew(:)-H(:)));
         it = it+1;
     end
-    H_avg = H;
+    Hfull = Hnew;
     H_tot = Hnew_tot;
-    S_avg = IoTidal(lam_M,lam_q,Pc,H_avg,H_tot,1);
     
-    heat_matrix = zeros(1000,Nlat-1,Nlon-1);
+    H = zeros(1000,Nlat-1,Nlon-1);
 
-    % Now go over latitude and longitude
+    lat_inp = linspace(0,180,Nlat);
+    lon_inp = linspace(0,360,Nlon);
+    lat_mids = 0.5*(lat_inp(1:end-1)+lat_inp(2:end));
+    lon_mids = 0.5*(lon_inp(1:end-1)+lon_inp(2:end));
+    
+    % Now go over latitude and longitude in full detail
     for i = 1:Nlat-1
         lat = lat_mids(i);
         parfor j = 1:Nlon-1
             lon = lon_mids(j);
-            [H H_tot_nan] = TidalHeatingCalc(S_avg.r,S_avg.T,S_avg.phi,eta_diss,lat,lon,eta_flag);
+            [H,~] = TidalHeatingCalc(r,Tavg,phiavg,eta_diss,lat,lon,eta_flag); % get heating dist with avg structure
             S = IoTidal(lam_M,lam_q,Pc,H,H_tot,0);
             heat_matrix(:,i,j) = H;
             por_matrix(:,i,j) = S.phi;
@@ -160,12 +180,9 @@ IoTidal_results.density_matrix = density_matrix;
 IoTidal_results.topography = topography;
 IoTidal_results.lat = lat_mids;
 IoTidal_results.lon = lon_mids;
-IoTidal_results.S_avg = S_avg;
 IoTidal_results.Pc = Pc;
 IoTidal_results.info = 'Emplacement rate M = lam_M + lam_q*qp';
 IoTidal_results.eta_diss = eta_diss;
-IoTidal_results.avg_soln = S_avg;
-IoTidal_results.avg_heat = H_avg;
 IoTidal_results.tot_heat = H_tot;
 
 save(filename,'IoTidal_results');

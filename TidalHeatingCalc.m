@@ -275,13 +275,15 @@ for k=1:Nlon-1
     heatavg_mid(:,:,k) = 0.5*(heatavg_mid_lat(:,:,k)+heatavg_mid_lat(:,:,k+1));
 end
 
-[V_mesh r_mesh lon_mesh] = meshgrid(V_wedge,r,phi(1:end-1));
-heatrad = sum(squeeze(sum(heatavg_mid.*V_mesh/(4/3*pi*(R^3-r(1)^3)),2)),2);
+%[V_mesh r_mesh lon_mesh] = meshgrid(V_wedge,r,phi(1:end-1));
+%heatrad = sum(squeeze(sum(heatavg_mid.*V_mesh/(4/3*pi*(R^3-r(1)^3)),2)),2);
 
-H = heatrad;
+H = heatavg_mid;
+
+%H = heatrad;
 H(H<0) = 0;
 
-% need to integrate heating over the whole body
+% need to integrate heating over the whole body to get total heat
 for ii=1:Nrad-1
     heatavg_midr(ii,:,:) = 0.5*(heatavg_mid(ii,:,:)+heatavg_mid(ii+1,:,:));
 end
@@ -291,7 +293,7 @@ H_total = sum(heatavg_midr.*V_mesh,'all');
 
 % put back on to full length array if need
 while length(H)<fullsize
-    H = interp1(r,H,linspace(700e3,1820e3,fullsize),'linear','extrap')';
+    H = interp1(r,H,linspace(700e3,1820e3,fullsize),'linear','extrap');
 end
 
 % For benchmarking against Ross fig 2a
